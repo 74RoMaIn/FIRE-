@@ -13,13 +13,14 @@ library(tidyverse)
 library(lme4)
 library(vegan)
 library(ade4)
+library(ape)
 ```
 
 
 #Chargement des données :
 
 ```{r}
-setwd("~/M2/FIRE")
+setwd("~/M2/FIRE/FIRE_code")
 faune_sol<-read.csv("Faune2.csv", header = T, sep=";")
 ```
 
@@ -119,7 +120,7 @@ Je pense qu'une loi de poisson peut bien passer.
 
 ```{r}
 poiss_random<-glmer(Abondance~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = poisson)#AIC =  8285.4 
-plot(poiss)
+plot(poiss_random)
 
 poiss<-glm(Abondance~Site*Traitement, data=faune_sol, family = poisson)
 plot(poiss)
@@ -130,7 +131,7 @@ Le modèle est mieux avec les effets aléatoires. Je vais conserver la structure
 ### Modele avec disrtibution negative binomiale 
 
 ```{r}
-negbin<-glmer.nb(Abondance~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = quasipoisson)#AIC = 4261.69
+negbin<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = quasipoisson)#AIC = 4261.69
 plot(negbin)
 
 ```
@@ -153,6 +154,12 @@ ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
   facet_grid(.~Classe)+
   theme_bw()
 ```
+
+
+
+
+---
+
 
 
 # PcoA
