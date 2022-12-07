@@ -130,14 +130,79 @@ Le modèle est mieux avec les effets aléatoires. Je vais conserver la structure
 
 ### Modele avec disrtibution negative binomiale 
 
+Afin de faire la selection, je vais partir d'un modèle complet.
+Nous commençons par la selection des effets aléatoires.
 ```{r}
-negbin<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = quasipoisson)#AIC = 4261.69
+negbin_full<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4255
 plot(negbin)
 
+negbin_Rep<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition),data=faune_sol)#AIC = 4253.2
+
+negbin_Parcelle<-glmer.nb(round(Abondance)~Site*Traitement+(1|Parcelle),data=faune_sol)#AIC = 4255.3 
+
+negbin_<-glm.nb(round(Abondance)~Site*Traitement,data=faune_sol)#AIC = 4253.3 
 ```
 Je divise mon AIC par 2 donc c'est mieux qu'une loi de poisson. 
 
 Néanmoins les résidus ne sont pas homogènes. Il semble y avoir une croissance de ceux-ci. Il faudra donc peut être modifier la matrice variance/covariance. 
+Je vais conserver les deux effets aléatoire, lors de la selection nous n'avons pas suffisament améliorer le modèle en les retirant 
+
+
+Selection des effets fixes :
+```{r}
+negbin_add<-glmer.nb(round(Abondance)~Site+Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4259.2
+
+neg<-glmer.nb(round(Abondance)~Traitement+(1|Site)+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4263.2
+
+negbin_log<-glmer.nb(round(log(Abondance+1))~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 2047
+
+poiss_log<-glmer(round(log(Abondance+1))~Site*Traitement+(1|Repetition)+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2045.4
+
+poiss_log1<-glmer(round(log(Abondance+1))~Site*Traitement+(1|Repetition), family = poisson, data=faune_sol)#AIC = 2043.4
+poiss_log2<-glmer(round(log(Abondance+1))~Site*Traitement+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2043.4
+
+poiss_add<-glmer(round(log(Abondance+1))~Site+Traitement+(1|Repetition)+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2042
+
+poiss_Rep<-glmer(round(log(Abondance+1))~Site+(1|Repetition)+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2043.9
+
+poiss_traitement<-glmer(round(log(Abondance+1))~Traitement+(1|Repetition)+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2041
+```
+
+Le meilleur modele est le suivant : 
+$$
+log(Abondance+1) = Site_i \space * \space Traitement_j \space + \space (1|Repetition)\space+\space(1|Parcelle)   
+$$
+$$
+\left\{
+\begin{array}{ll}
+N_i \sim P(\lambda_i) \\
+\eta_i = \alpha + \beta*Site + \gamma*Traitement \\
+log(E(X_i)) = log(\mu_i) = \eta_i 
+\end{array}\right.
+$$
+
+## Residuals of the model
+
+```{r}
+
+```
+
+
+
+## Surdispersion parameter 
+
+## Calcul du phi :
+
+Nous allons à présent regarder la surdispersion de notre modèle. Nous pouvons utiliser les **résidus de pearson** ou les **résidus de la déviance**. Par défaut dans R, nous avons les **résidus de la déviance**.Dans le cas où n'aurions **pas de surdispersion** ${\phi = 1}$ avec ${\phi = Var(N_i) / E(Y_i)}$.
+
+```{r phi,echo=TRUE,results='markup'}
+phi <- M_site$deviance/(M_site$df.residual)
+#phi = 1.388
+```
+
+
+
+
 
 # Création de sous tableau : 
 
