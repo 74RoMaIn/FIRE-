@@ -1,0 +1,244 @@
+---
+title: "FIRE"
+author: "Romain GOURY"
+date: "2022-11-29"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+--- 
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(lme4)
+library(vegan)
+library(ade4)
+```
+
+
+#Chargement des données :
+
+```{r}
+setwd("~/M2/FIRE")
+faune_sol<-read.csv("Faune2.csv", header = T, sep=";")
+```
+
+
+```{r}
+str(faune_sol)
+faune_sol$Code_barber<-as.factor(faune_sol$Code_barber)
+faune_sol$Numero_barber<-as.factor(faune_sol$Numero_barber)
+faune_sol$Site<-as.factor(faune_sol$Site)
+faune_sol$Traitement<-as.factor(faune_sol$Traitement)
+faune_sol$Repetition<-as.factor(faune_sol$Repetition)
+faune_sol$Classe<-as.factor(faune_sol$Classe)
+faune_sol$Ordre<-as.factor(faune_sol$Ordre)
+faune_sol$Genre<-as.factor(faune_sol$Genre)
+faune_sol$Espece<-as.factor(faune_sol$Espece)
+faune_sol$Abondance<-as.numeric(faune_sol$Abondance)
+
+#Set blank to NA 
+faune_sol[faune_sol == ""] <- NA  
+
+#Select rows with NAs
+NA_ab<-faune_sol[is.na(faune_sol$Abondance), ]
+NA_ab
+```
+
+Je vais regarder si les sites étudiés sont bien écrits, pas affichés en double et les quels il manque. 
+En tout nous avons 3 sites, 2 parcelles par site et 9 barbers par site. Nous devrions donc avoir **54 barbers en tout**. Nous avons 6 répétitions donc en tout nous avions 324 a identifier. Pus d'une cinquantaine ont du être renversé, donc nous devrions en avoir environ 250 à identifier.
+
+```{r}
+length(unique(faune_sol$Code_barber))
+length(unique(faune_sol$Numero_barber))
+
+#je selectionne morties
+morties<- filter(faune_sol, Site=='Morties')
+length(unique(morties$Numero_barber))
+
+#je selectionne buzarens
+buzarens<- filter(faune_sol, Site=='Buzarens')
+length(unique(buzarens$Numero_barber))
+
+#je selectionne triballe
+triballe<- filter(faune_sol, Site=='Triballe')
+length(unique(triballe$Numero_barber))
+```
+
+**Nous avons identifier 122 barbers pour le moment.**
+
+Morties : 18 barbers okay.
+Buzarens : 18 barbers okay.
+Triballe : 11 barbers ..manque 7 dont 1 en NL et 6 en L. Le NL est B.B2
+
+Nous avons l'abondance comme variable à expliquer. Nous allons donc à faire à des données de comptage, nous allons donc faire un glm. 
+
+Nous avons le Site, le Traitement, et la repétition comme variable explicative. Les deux premières seront des variables fixes et la variable réptétition sera considérée comme une variable aléatoire. 
+
+Le site à 3 niveaux, le traitement 2 et les répétitions 6. 
+
+Nous considérons que les sites sont suffisamment éloignés pour ne pas avoir de corrélations spatiales. Si c'est le cas, nous modifierons la structure de la matrice variance/covariance.
+
+# Outliers treatments
+
+Je vais supprimer toutes les valeurs supérieures à 100, car nous biaisons nos résultats avec ces valeurs. Les valeurs extrêmes biaisent la moyenne.
+```{r}
+faune_sol<-faune_sol[!faune_sol$Abondance>99,]
+mean(faune_sol$Abondance)
+```
+La moyenne est passé de 6,5 à 5. Nous avons supprimé seulement 3 valeurs, mais nous constatons que la moyenne à été très impactée.
+
+
+# Tableau complet :
+
+## Représentation graphique 
+```{r}
+ggplot(faune_sol,aes(x=Traitement,y=Abondance,fill=Traitement))+
+  geom_boxplot()+
+  theme_bw()
+```
+
+## Création du modèle 
+
+Je vais commencer avec le modèle complet donc avec la variable aléatoire. 
+
+### Quelle distribution utilisée ?
+
+```{r}
+
+ggplot(faune_sol,aes(x=Abondance))+
+  geom_histogram(bins=20)+theme_bw()
+
+ggplot(faune_sol,aes(x=log(Abondance+1)))+
+  geom_histogram(bins=20)+theme_bw()
+```
+Je pense qu'une loi de poisson peut bien passer. 
+
+
+### Modele avec distribution de poisson 
+
+```{r}
+poiss_random<-glmer(Abondance~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = poisson)#AIC =  8285.4 
+plot(poiss)
+
+poiss<-glm(Abondance~Site*Traitement, data=faune_sol, family = poisson)
+plot(poiss)
+```
+Le modèle est mieux avec les effets aléatoires. Je vais conserver la structure complète avec effets aléatoires et je vais tester d'autres distribution comme la négative binomiale et la quasipoisson. Peut être qu'il faut aussi tester le log +1. 
+
+
+### Modele avec disrtibution negative binomiale 
+
+```{r}
+negbin<-glmer.nb(Abondance~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = quasipoisson)#AIC = 4261.69
+plot(negbin)
+
+```
+Je divise mon AIC par 2 donc c'est mieux qu'une loi de poisson. 
+
+Néanmoins les résidus ne sont pas homogènes. Il semble y avoir une croissance de ceux-ci. Il faudra donc peut être modifier la matrice variance/covariance. 
+
+# Création de sous tableau : 
+
+Je vais créer un sous tableau avec les collemboles, les insectes et les acariens.
+```{r}
+sub_faune<-filter(faune_sol,faune_sol$Classe=="Acari" |
+                            faune_sol$Classe=="Collembola" |
+                            faune_sol$Classe=="Insecta")
+```
+
+```{r}
+ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
+  geom_boxplot()+
+  facet_grid(.~Classe)+
+  theme_bw()
+```
+
+
+# PcoA
+
+Creation de la matrice site/espece afin de faire la PcoA :
+```{r}
+matrix <- faune_sol %>% 
+  select(Numero_barber, Classe, Abondance) %>% 
+  group_by(Numero_barber, Classe) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Classe, values_from = Ab,values_fill = 0)
+matrice<-as.data.frame(matrix)
+rownames(matrice) <- matrice$Numero_barber
+matrice_t<-t(matrice)
+matrice<-matrice[,-1]
+```
+
+
+Creation de la matice site/environment :
+```{r}
+mat<- faune_sol %>% 
+  group_by(Numero_barber, Site, Traitement, Parcelle) %>% 
+  summarise(n()) 
+
+mat<-as.data.frame(mat)
+rownames(mat) <- mat$Numero_barber
+
+mat$Traitement<-as.factor(mat$Traitement)
+mat$Site<-as.factor(mat$Site)
+mat$Parcelle<-as.factor(mat$Parcelle)
+mat<-mat[,-c(1,4)]
+
+```
+
+
+Nous allons utiliser la distance de bray curtis avec une transformation de caillez.
+```{r}
+bc<-vegdist(matrice,method="bray")
+
+# Distance de Bray Curtis
+bc_dist=sqrt(vegdist(matrice,"bray"))
+#comparaison des distance entre bray_curtis et la racine carr? de bray curtis
+plot(bc,bc_dist,xlim=c(0,1), ylim=c(0,1))
+abline(0,1)
+#Nous pouvons faire une PcoA au vue des données obtenu via le graphe
+
+is.euclid(bc_dist)#TRUE 
+```
+
+The **Bray-Curtis Dissimilarity** is calculated as:
+
+BCij = 1 – (2*Cij) / (Si + Sj)
+
+where:
+
+*   Cij: The sum of the lesser values for the species found in each site. In other words, if for Collembola site A has 3 species and site B has 7 species, we'll take 3. Each we take the lower value between A and B and we sum it.
+
+*   Si: The total number of specimens counted at site i
+
+*   Sj: The total number of specimens counted at site j
+
+
+The Bray-Curtis Dissimilarity always ranges between 0 and 1 where:
+
+*   0 indicates that two sites have zero dissimilarity. In other words, they share the exact same number of each type of species.
+
+*   1 indicates that two sites have complete dissimilarity. In other words, they share none of the same type of species.
+
+
+The Bray-Curtis dissimilarity assumes that the two sites are of equal size.
+
+This is a crucial assumption because if one site is four times larger than the other site, then we’ll naturally count more species in the larger site compared to the smaller site simply because there is so much more area to cover.
+
+```{r}
+pcbc=dudi.pco(bc_dist,scannf = F,nf=20)
+s.label(pcbc$li, sub="Bray curtis")
+s.class(pcbc$li,mat$Traitement,col=c(1:2),sub="Bray curtis")
+s.class(pcbc$li,mat$Site,col=c(1:3),sub="Bray curtis")
+```
+
+
+```{r}
+pcobc=pcoa(bc)
+biplot(pcobc, col=c("red"))
+```
+
+
+# Permanova : 
+
