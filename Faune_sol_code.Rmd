@@ -14,6 +14,8 @@ library(lme4)
 library(vegan)
 library(ade4)
 library(ape)
+library(MASS)
+library(ggsignif)
 ```
 
 
@@ -90,13 +92,22 @@ mean(faune_sol$Abondance)
 La moyenne est passé de 6,5 à 5. Nous avons supprimé seulement 3 valeurs, mais nous constatons que la moyenne à été très impactée.
 
 
-# Tableau complet :
+# Analyse de l'abondance :
 
 ## Représentation graphique 
 ```{r}
 ggplot(faune_sol,aes(x=Traitement,y=Abondance,fill=Traitement))+
   geom_boxplot()+
   theme_bw()
+
+ggplot(faune_sol,aes(x=Traitement,y=log(Abondance+1),fill=Traitement))+
+  geom_boxplot()+
+  geom_signif(comparisons = list(c("Ligneux", "Non_ligneux")), 
+              map_signif_level=TRUE)+
+  ylab('Abondance (log+1)')+
+  theme_classic()+
+  theme(legend.position = c(0.12, 0.85),
+        legend.background = element_rect(fill = "white")) 
 ```
 
 ## Création du modèle 
@@ -148,7 +159,7 @@ Néanmoins les résidus ne sont pas homogènes. Il semble y avoir une croissance
 Je vais conserver les deux effets aléatoire, lors de la selection nous n'avons pas suffisament améliorer le modèle en les retirant 
 
 
-Selection des effets fixes :
+## Selection des effets fixes :
 ```{r}
 negbin_add<-glmer.nb(round(Abondance)~Site+Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4259.2
 
@@ -168,40 +179,71 @@ poiss_Rep<-glmer(round(log(Abondance+1))~Site+(1|Repetition)+(1|Parcelle), famil
 poiss_traitement<-glmer(round(log(Abondance+1))~Traitement+(1|Repetition)+(1|Parcelle), family = poisson, data=faune_sol)#AIC = 2041
 ```
 
-Le meilleur modele est le suivant : 
+
+D'après les AIC obtenus, le meilleur modele est le suivant : 
 $$
-log(Abondance+1) = Site_i \space * \space Traitement_j \space + \space (1|Repetition)\space+\space(1|Parcelle)   
+log(Abondance+1) = Site_i + \space Traitement_j \space + \space (1|Repetition)\space+\space(1|Parcelle)   
 $$
+J'ai pris le modèle avec le plus faible AIC (2041). Quand la différence entre deux AIC est inférieur à 2, nous ne normalement pas discrimer l'un au l'autre modèle. Dans notre cas la différence d'AIC en poiss_add et poiss_traitement est inférieure à 2. Ainsi je décide de prendre le modèle avec une relation additive entre le site et le traiement. 
+
 $$
 \left\{
 \begin{array}{ll}
 N_i \sim P(\lambda_i) \\
-\eta_i = \alpha + \beta*Site + \gamma*Traitement \\
+\eta_i = \alpha +\beta*Site_i + \gamma*Traitement_j \\
 log(E(X_i)) = log(\mu_i) = \eta_i 
 \end{array}\right.
 $$
 
+
+
 ## Residuals of the model
 
 ```{r}
-
+plot(poiss_add)
 ```
+Dans le cadre d'un glm nous n'avons pas d'hypothèses sur les glm.
+Nous constatons que les résidus sont répartis de manière homogène et sont indépendant les uns des autres. 
 
 
 
 ## Surdispersion parameter 
 
-## Calcul du phi :
+### Calcul du phi :
 
 Nous allons à présent regarder la surdispersion de notre modèle. Nous pouvons utiliser les **résidus de pearson** ou les **résidus de la déviance**. Par défaut dans R, nous avons les **résidus de la déviance**.Dans le cas où n'aurions **pas de surdispersion** ${\phi = 1}$ avec ${\phi = Var(N_i) / E(Y_i)}$.
 
 ```{r phi,echo=TRUE,results='markup'}
-phi <- M_site$deviance/(M_site$df.residual)
-#phi = 1.388
+
+#phi <- poiss_add$deviance/(poiss_add$df.residual)
+#poiss_add$deviance = 2030
+#poiss_add$df.residual = 789
+phi <- 2030/789
+#phi = 2.57
+```
+Phi devrait être d'environ 1. Dans notre cas il est d'environ 2,5. 
+Nous pouvons dire que nous avons une légère surdispersion de notre jeu de donnée. Nous pouvons changer la matrice variance/covariance afin de réduire cette surdispersion. Dans notre cas précis, le modèle semble assez complexe et nous allons donc conserver cette structure de modèle. 
+
+
+## Model interpretation 
+
+### Rate ratio
+
+Le Rate Ratio ne marche uniquement pour le lien log car nous avons une relation explonentielle. Cela permet de changer d'échelles car nous utilisions une fonction de lien logarithmique et donc il faut passer à l'exponentielle pour avoir la réelle relation en les deux modalités. 
+```{r}
+#Exctration des paramètre des effets fixes
+fixe<-fixef(poiss_add)
+round(exp(fixe),2)
 ```
 
+*   Lors que nous passons **de ligneux à non ligneux**, nous multiplions l'abondance de faune du sol de 1.13. Cela singifie que nous **augmentons de 13%** l'abondance de faune du sol quand nous passons de ligneux à non ligneux. Cette différence semble faible mais est significative (via model poiss_add). 
+
+Cela ne nous renseigne sur pas grand chose au final. Nous pouvons avoir d'un coté peu de taxons mais avec des abondances très élévés, et de l'autre avoir plus de taxons (RS plus forte) mais en plus faible abondance. Pour ce faire, nous allons faire l'analyse de la diversité alpha.
 
 
+# Analyse de la diversité alpha : 
+
+Pour l'analyse de la diversité alpha nous allons prendre en compte les deux modalités du traitement comme étant chacun une communauté. Ainsi nous allons calculer une diversité alpha sur chacune de ces modalités et comparer les diversité alpha afin de voir si nous avons des RS similaires entre ces deux modalités. Cette diversité alpha serait calculée sur les ordres et non sur les espèces car nous ne sommes pas allé jusqu'à la determination des espèces pour la plupart des taxons. 
 
 
 # Création de sous tableau : 
@@ -232,7 +274,7 @@ ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
 Creation de la matrice site/espece afin de faire la PcoA :
 ```{r}
 matrix <- faune_sol %>% 
-  select(Numero_barber, Classe, Abondance) %>% 
+  dplyr::select(Numero_barber, Classe, Abondance) %>% 
   group_by(Numero_barber, Classe) %>% 
   summarise(Ab = mean(Abondance)) %>% 
   pivot_wider(names_from = Classe, values_from = Ab,values_fill = 0)
@@ -300,11 +342,18 @@ This is a crucial assumption because if one site is four times larger than the o
 
 ```{r}
 pcbc=dudi.pco(bc_dist,scannf = F,nf=20)
+
+# Pourcentages associés aux axes
+pourc=round((pcbc$eig/sum(pcbc$eig))*100,2)
+cumsum(pourc)
+
 s.label(pcbc$li, sub="Bray curtis")
 s.class(pcbc$li,mat$Traitement,col=c(1:2),sub="Bray curtis")
 s.class(pcbc$li,mat$Site,col=c(1:3),sub="Bray curtis")
+s.class(pcbc$li,mat$Site,col=c(1:3),sub="Bray curtis",xax=1, yax = 3)
+s.class(pcbc$li,mat$Traitement,col=c(1:2),sub="Bray curtis",xax=1, yax = 3)
 ```
-
+L'axe numéro 1 explique 21% de la variabilité et l'axe numéro deux 11%. L'axe numéro quant à lui explique 9% de la variabilité, il serait donc intérressant de le regrader également. 
 
 ```{r}
 pcobc=pcoa(bc)
@@ -314,3 +363,8 @@ biplot(pcobc, col=c("red"))
 
 # Permanova : 
 
+Fonction adonis utilise la méthode de bray-curtis de base 
+```{r}
+adonis2(bc ~ Traitement+Site, data=mat, permutations=999)
+```
+Nous constatons que nous avons un effet significatif du traitement. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
