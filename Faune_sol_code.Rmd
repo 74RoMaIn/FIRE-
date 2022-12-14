@@ -243,7 +243,31 @@ Cela ne nous renseigne sur pas grand chose au final. Nous pouvons avoir d'un cot
 
 # Analyse de la diversité alpha : 
 
-Pour l'analyse de la diversité alpha nous allons prendre en compte les deux modalités du traitement comme étant chacun une communauté. Ainsi nous allons calculer une diversité alpha sur chacune de ces modalités et comparer les diversité alpha afin de voir si nous avons des RS similaires entre ces deux modalités. Cette diversité alpha serait calculée sur les ordres et non sur les espèces car nous ne sommes pas allé jusqu'à la determination des espèces pour la plupart des taxons. 
+Pour l'analyse de la diversité alpha nous allons prendre en compte les deux modalités du traitement comme étant chacun une communauté. Ainsi nous allons calculer une diversité alpha sur chacune de ces modalités et comparer les diversité alpha afin de voir si nous avons des RS similaires entre ces deux modalités. Cette diversité alpha serait calculée sur les ordres et non sur les espèces car nous ne sommes pas allé jusqu'à la determination des espèces pour la plupart des taxons. Pour ce faire nous utilisons la fonction 'diversity()' du package vegan. 
+
+```{r}
+alpha <- diversity(matrice, index = 'shannon', mat$Traitement)
+alpha_1 <- diversity(matrice, index = 'shannon', mat$Parcelle)
+
+mat$alpha <- ifelse(mat$Traitement=='Ligneux', 1.39664, 1.645358)
+mat$alpha_1 <- ifelse(mat$Parcelle=='B_L',1.282906,
+                      ifelse(mat$Parcelle=='B_NL',1.214442,
+                      ifelse(mat$Parcelle=='M_L', 1.509221,
+                      ifelse(mat$Parcelle=='M_NL',1.848948,
+                      ifelse(mat$Parcelle=='T_L',1.220084, 1.517253)))))
+```                  
+                  
+
+
+```{r}
+hist(mat$alpha)
+
+ggplot(mat,aes(y=alpha_1,x=Traitement,fill=Traitement))+
+  geom_boxplot()+
+  stat_summary(fun = mean, geom = "point", col = "red") +
+  theme_bw()
+```
+When I comput mean on each field (6 fields), the main obtained is not the same that when I compute mean on the treatments. The issue is that I want the mean difference between each treatments, but when I compute it directly, I cant have sd, and so I cant plot it and test it via t.test() for examples. So I dont know what to do.
 
 
 # Création de sous tableau : 
@@ -269,7 +293,7 @@ ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
 
 
 
-# PcoA
+# PcoA perform on class 
 
 Creation de la matrice site/espece afin de faire la PcoA :
 ```{r}
@@ -297,7 +321,7 @@ rownames(mat) <- mat$Numero_barber
 mat$Traitement<-as.factor(mat$Traitement)
 mat$Site<-as.factor(mat$Site)
 mat$Parcelle<-as.factor(mat$Parcelle)
-mat<-mat[,-c(1,4)]
+mat<-mat[,-c(1,5)]
 
 ```
 
@@ -368,3 +392,64 @@ Fonction adonis utilise la méthode de bray-curtis de base
 adonis2(bc ~ Traitement+Site, data=mat, permutations=999)
 ```
 Nous constatons que nous avons un effet significatif du traitement. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
+
+
+
+
+
+# PCoA perform on order : 
+
+Creation de la matrice site/espece afin de faire la PcoA :
+```{r}
+matrix_ordre <- faune_sol %>% 
+  dplyr::select(Numero_barber, Ordre, Abondance) %>% 
+  group_by(Numero_barber, Ordre) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Ordre, values_from = Ab,values_fill = 0)
+matrice_ordre<-as.data.frame(matrix_ordre)
+rownames(matrice_ordre) <- matrice_ordre$Numero_barber
+matrice_t<-t(matrice_ordre)
+matrice_ordre<-matrice_ordre[,-1]
+```
+
+
+Nous allons utiliser la distance de bray curtis avec une transformation de caillez.
+```{r}
+bc_ordre<-vegdist(matrice_ordre,method="bray")
+
+# Distance de Bray Curtis
+bc_dist_o=sqrt(vegdist(matrice_ordre,"bray"))
+#comparaison des distance entre bray_curtis et la racine carr? de bray curtis
+plot(bc_ordre,bc_dist_o,xlim=c(0,1), ylim=c(0,1))
+abline(0,1)
+#Nous pouvons faire une PcoA au vue des données obtenu via le graphe
+
+is.euclid(bc_dist_o)#TRUE 
+```
+
+
+
+```{r}
+pcbc_ordre=dudi.pco(bc_dist_o,scannf = F,nf=20)
+
+# Pourcentages associés aux axes
+pourc=round((pcbc_ordre$eig/sum(pcbc_ordre$eig))*100,2)
+cumsum(pourc)
+
+s.label(pcbc_ordre$li, sub="Bray curtis")
+s.class(pcbc_ordre$li,mat$Traitement,col=c(1:2),sub="Bray curtis")
+s.class(pcbc_ordre$li,mat$Site,col=c(1:3),sub="Bray curtis")
+s.class(pcbc_ordre$li,mat$Site,col=c(1:3),sub="Bray curtis",xax=1, yax = 3)
+s.class(pcbc_ordre$li,mat$Traitement,col=c(1:2),sub="Bray curtis",xax=1, yax = 3)
+```
+L'axe numéro 1 explique 21% de la variabilité et l'axe numéro deux 11%. L'axe numéro quant à lui explique 9% de la variabilité, il serait donc intérressant de le regrader également. 
+
+# Permanova : 
+
+Fonction adonis utilise la méthode de bray-curtis de base 
+```{r}
+adonis2(bc_ordre ~ Traitement+Site, data=mat, permutations=999)
+```
+Nous constatons que nous avons un effet significatif du traitement et du site quand nous utilisons les ordres plutôt que les classes. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
+
+
