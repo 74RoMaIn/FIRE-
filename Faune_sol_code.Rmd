@@ -16,6 +16,7 @@ library(ade4)
 library(ape)
 library(MASS)
 library(ggsignif)
+library(iNEXT)
 ```
 
 
@@ -246,15 +247,7 @@ Cela ne nous renseigne sur pas grand chose au final. Nous pouvons avoir d'un cot
 Pour l'analyse de la diversité alpha nous allons prendre en compte les deux modalités du traitement comme étant chacun une communauté. Ainsi nous allons calculer une diversité alpha sur chacune de ces modalités et comparer les diversité alpha afin de voir si nous avons des RS similaires entre ces deux modalités. Cette diversité alpha serait calculée sur les ordres et non sur les espèces car nous ne sommes pas allé jusqu'à la determination des espèces pour la plupart des taxons. Pour ce faire nous utilisons la fonction 'diversity()' du package vegan. 
 
 ```{r}
-alpha <- diversity(matrice, index = 'shannon', mat$Traitement)
-alpha_1 <- diversity(matrice, index = 'shannon', mat$Parcelle)
-
-mat$alpha <- ifelse(mat$Traitement=='Ligneux', 1.39664, 1.645358)
-mat$alpha_1 <- ifelse(mat$Parcelle=='B_L',1.282906,
-                      ifelse(mat$Parcelle=='B_NL',1.214442,
-                      ifelse(mat$Parcelle=='M_L', 1.509221,
-                      ifelse(mat$Parcelle=='M_NL',1.848948,
-                      ifelse(mat$Parcelle=='T_L',1.220084, 1.517253)))))
+mat$alpha <- diversity(matrice, index = 'shannon')
 ```                  
                   
 
@@ -262,12 +255,54 @@ mat$alpha_1 <- ifelse(mat$Parcelle=='B_L',1.282906,
 ```{r}
 hist(mat$alpha)
 
-ggplot(mat,aes(y=alpha_1,x=Traitement,fill=Traitement))+
+ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
   geom_boxplot()+
-  stat_summary(fun = mean, geom = "point", col = "red") +
-  theme_bw()
+  ylab('Shannon index')+
+  theme_classic()+
+  scale_fill_brewer(palette = "Set2")+
+  theme(legend.position = c(0.12, 0.15),
+        legend.background = element_rect(fill = "white")) 
 ```
-When I comput mean on each field (6 fields), the main obtained is not the same that when I compute mean on the treatments. The issue is that I want the mean difference between each treatments, but when I compute it directly, I cant have sd, and so I cant plot it and test it via t.test() for examples. So I dont know what to do.
+
+
+```{r}
+shanon <- lm(alpha ~ Traitement + Site, data=mat)
+summary(shanon)
+```
+Pas de différence significative entre la différence de diversité alpha entre les deux traitements.
+La diversité est significativement différente entre le site de la triballe et des deux autres sites. L'indice de shannon est significativement plus faible à la triballe qu'à morties et buzarens. 
+
+
+# Courbe de rarefaction :
+
+Creation d'une matrice ligneux/non ligneux
+```{r}
+faune_lingeux<-filter(faune_sol,Traitement=="Ligneux")
+mat_ligneux <- faune_lingeux %>% 
+  dplyr::select(Numero_barber, Classe, Abondance) %>% 
+  group_by(Numero_barber, Classe) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Classe, values_from = Ab,values_fill = 0)
+
+mat_ligneux<-as.data.frame(mat_ligneux)
+rownames(mat_ligneux) <- mat_ligneux$Numero_barber
+matrice_t<-t(mat_ligneux)
+mat_ligneux<-mat_ligneux[,-1]
+```
+
+
+```{r}
+
+ligneux_rare <- iNEXT(mat_ligneux,datatype = "abundance")
+Nonligneux_rare <- iNEXT(Non_ligneux$Abondance,datatype = "abundance")
+
+
+ChaoShannon(mat_ligneux)
+
+ggiNEXT(ligneux_rare, type=1, se=TRUE)
+ggiNEXT(Nonligneux_rare, type=1, se=TRUE, grey=FALSE)
+
+```
 
 
 # Création de sous tableau : 
@@ -290,6 +325,7 @@ ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
 
 
 ---
+
 
 
 
