@@ -2,10 +2,25 @@
 title: "FIRE"
 author: "Romain GOURY"
 date: "2022-11-29"
-output: pdf_document
+output: 
+  html_document:
+    toc: yes
+    number_sections: yes
+    toc_float: yes
 editor_options: 
   chunk_output_type: console
 --- 
+
+
+```{r setup, echo=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE, 
+cache=FALSE,eval=TRUE, results='hide', comment=NA)
+
+#echo=TRUE/FALSE : Which show/Hide the source code
+#warning : If FALSE, all warnings will be printed in the console instead of the output document
+
+```
+
 
 ```{r}
 library(dplyr)
@@ -17,6 +32,7 @@ library(ape)
 library(MASS)
 library(ggsignif)
 library(iNEXT)
+library(cowplot)
 ```
 
 
@@ -25,6 +41,7 @@ library(iNEXT)
 ```{r}
 setwd("~/M2/FIRE/FIRE_code")
 faune_sol<-read.csv("Faune2.csv", header = T, sep=";")
+bota<-read.csv("bota.csv", header = T, sep=";")
 ```
 
 
@@ -86,7 +103,7 @@ Nous considérons que les sites sont suffisamment éloignés pour ne pas avoir d
 # Outliers treatments
 
 Je vais supprimer toutes les valeurs supérieures à 100, car nous biaisons nos résultats avec ces valeurs. Les valeurs extrêmes biaisent la moyenne.
-```{r}
+```{r echo=TRUE}
 faune_sol<-faune_sol[!faune_sol$Abondance>99,]
 mean(faune_sol$Abondance)
 ```
@@ -96,11 +113,7 @@ La moyenne est passé de 6,5 à 5. Nous avons supprimé seulement 3 valeurs, mai
 # Analyse de l'abondance :
 
 ## Représentation graphique 
-```{r}
-ggplot(faune_sol,aes(x=Traitement,y=Abondance,fill=Traitement))+
-  geom_boxplot()+
-  theme_bw()
-
+```{r mod_fig, fig.show='asis'}
 ggplot(faune_sol,aes(x=Traitement,y=log(Abondance+1),fill=Traitement))+
   geom_boxplot()+
   geom_signif(comparisons = list(c("Ligneux", "Non_ligneux")), 
@@ -118,19 +131,20 @@ Je vais commencer avec le modèle complet donc avec la variable aléatoire.
 ### Quelle distribution utilisée ?
 
 ```{r}
-
+plot_grid(ncol = 2, labels = "AUTO",
+  
 ggplot(faune_sol,aes(x=Abondance))+
-  geom_histogram(bins=20)+theme_bw()
+  geom_histogram(bins=20)+theme_bw(),
 
 ggplot(faune_sol,aes(x=log(Abondance+1)))+
-  geom_histogram(bins=20)+theme_bw()
+  geom_histogram(bins=20)+theme_bw())
 ```
 Je pense qu'une loi de poisson peut bien passer. 
 
 
 ### Modele avec distribution de poisson 
 
-```{r}
+```{r echo=TRUE}
 poiss_random<-glmer(Abondance~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol, family = poisson)#AIC =  8285.4 
 plot(poiss_random)
 
@@ -144,15 +158,14 @@ Le modèle est mieux avec les effets aléatoires. Je vais conserver la structure
 
 Afin de faire la selection, je vais partir d'un modèle complet.
 Nous commençons par la selection des effets aléatoires.
-```{r}
+```{r echo=TRUE}
 negbin_full<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4255
-plot(negbin)
 
 negbin_Rep<-glmer.nb(round(Abondance)~Site*Traitement+(1|Repetition),data=faune_sol)#AIC = 4253.2
 
 negbin_Parcelle<-glmer.nb(round(Abondance)~Site*Traitement+(1|Parcelle),data=faune_sol)#AIC = 4255.3 
 
-negbin_<-glm.nb(round(Abondance)~Site*Traitement,data=faune_sol)#AIC = 4253.3 
+negbin<-glm.nb(round(Abondance)~Site*Traitement,data=faune_sol)#AIC = 4253.3 
 ```
 Je divise mon AIC par 2 donc c'est mieux qu'une loi de poisson. 
 
@@ -161,7 +174,7 @@ Je vais conserver les deux effets aléatoire, lors de la selection nous n'avons 
 
 
 ## Selection des effets fixes :
-```{r}
+```{r echo=TRUE}
 negbin_add<-glmer.nb(round(Abondance)~Site+Traitement+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4259.2
 
 neg<-glmer.nb(round(Abondance)~Traitement+(1|Site)+(1|Repetition)+(1|Parcelle), data=faune_sol)#AIC = 4263.2
@@ -200,7 +213,7 @@ $$
 
 ## Residuals of the model
 
-```{r}
+```{r fig.show='asis'}
 plot(poiss_add)
 ```
 Dans le cadre d'un glm nous n'avons pas d'hypothèses sur les glm.
@@ -231,7 +244,7 @@ Nous pouvons dire que nous avons une légère surdispersion de notre jeu de donn
 ### Rate ratio
 
 Le Rate Ratio ne marche uniquement pour le lien log car nous avons une relation explonentielle. Cela permet de changer d'échelles car nous utilisions une fonction de lien logarithmique et donc il faut passer à l'exponentielle pour avoir la réelle relation en les deux modalités. 
-```{r}
+```{r results='markup'}
 #Exctration des paramètre des effets fixes
 fixe<-fixef(poiss_add)
 round(exp(fixe),2)
@@ -247,13 +260,38 @@ Cela ne nous renseigne sur pas grand chose au final. Nous pouvons avoir d'un cot
 Pour l'analyse de la diversité alpha nous allons prendre en compte les deux modalités du traitement comme étant chacun une communauté. Ainsi nous allons calculer une diversité alpha sur chacune de ces modalités et comparer les diversité alpha afin de voir si nous avons des RS similaires entre ces deux modalités. Cette diversité alpha serait calculée sur les ordres et non sur les espèces car nous ne sommes pas allé jusqu'à la determination des espèces pour la plupart des taxons. Pour ce faire nous utilisons la fonction 'diversity()' du package vegan. 
 
 ```{r}
+matrix <- faune_sol %>% 
+  dplyr::select(Numero_barber, Classe, Abondance) %>% 
+  group_by(Numero_barber, Classe) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Classe, values_from = Ab,values_fill = 0)
+matrice<-as.data.frame(matrix)
+rownames(matrice) <- matrice$Numero_barber
+matrice_t<-t(matrice)
+matrice<-matrice[,-1]
+
+mat<- faune_sol %>% 
+  group_by(Numero_barber, Site, Traitement, Parcelle) %>% 
+  summarise(n()) 
+
+mat<-as.data.frame(mat)
+rownames(mat) <- mat$Numero_barber
+
+mat$Traitement<-as.factor(mat$Traitement)
+mat$Site<-as.factor(mat$Site)
+mat$Parcelle<-as.factor(mat$Parcelle)
+mat<-mat[,-c(1,5)]
+
+```
+
+
+```{r echo=TRUE}
 mat$alpha <- diversity(matrice, index = 'shannon')
 ```                  
                   
 
 
-```{r}
-hist(mat$alpha)
+```{r shannon, fig.show='asis'}
 
 ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
   geom_boxplot()+
@@ -265,7 +303,7 @@ ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
 ```
 
 
-```{r}
+```{r results='markup'}
 shanon <- lm(alpha ~ Traitement + Site, data=mat)
 summary(shanon)
 ```
@@ -276,7 +314,7 @@ La diversité est significativement différente entre le site de la triballe et 
 # Courbe de rarefaction :
 
 Creation d'une matrice ligneux/non ligneux
-```{r}
+```{r echo=TRUE}
 faune_lingeux<-filter(faune_sol,Traitement=="Ligneux")
 mat_ligneux <- faune_lingeux %>% 
   dplyr::select(Numero_barber, Classe, Abondance) %>% 
@@ -291,36 +329,13 @@ mat_ligneux<-mat_ligneux[,-1]
 ```
 
 
-```{r}
+```{r echo=TRUE, results='markup',fig.show='asis'}
 
 ligneux_rare <- iNEXT(mat_ligneux,datatype = "abundance")
-Nonligneux_rare <- iNEXT(Non_ligneux$Abondance,datatype = "abundance")
-
-
 ChaoShannon(mat_ligneux)
-
 ggiNEXT(ligneux_rare, type=1, se=TRUE)
-ggiNEXT(Nonligneux_rare, type=1, se=TRUE, grey=FALSE)
 
 ```
-
-
-# Création de sous tableau : 
-
-Je vais créer un sous tableau avec les collemboles, les insectes et les acariens.
-```{r}
-sub_faune<-filter(faune_sol,faune_sol$Classe=="Acari" |
-                            faune_sol$Classe=="Collembola" |
-                            faune_sol$Classe=="Insecta")
-```
-
-```{r}
-ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
-  geom_boxplot()+
-  facet_grid(.~Classe)+
-  theme_bw()
-```
-
 
 
 
@@ -332,7 +347,7 @@ ggplot(sub_faune,aes(x=Traitement,y=Abondance,fill=Traitement))+
 # PcoA perform on class 
 
 Creation de la matrice site/espece afin de faire la PcoA :
-```{r}
+```{r echo=TRUE}
 matrix <- faune_sol %>% 
   dplyr::select(Numero_barber, Classe, Abondance) %>% 
   group_by(Numero_barber, Classe) %>% 
@@ -346,7 +361,7 @@ matrice<-matrice[,-1]
 
 
 Creation de la matice site/environment :
-```{r}
+```{r echo=TRUE}
 mat<- faune_sol %>% 
   group_by(Numero_barber, Site, Traitement, Parcelle) %>% 
   summarise(n()) 
@@ -363,7 +378,7 @@ mat<-mat[,-c(1,5)]
 
 
 Nous allons utiliser la distance de bray curtis avec une transformation de caillez.
-```{r}
+```{r echo=TRUE}
 bc<-vegdist(matrice,method="bray")
 
 # Distance de Bray Curtis
@@ -400,7 +415,7 @@ The Bray-Curtis dissimilarity assumes that the two sites are of equal size.
 
 This is a crucial assumption because if one site is four times larger than the other site, then we’ll naturally count more species in the larger site compared to the smaller site simply because there is so much more area to cover.
 
-```{r}
+```{r fig.show='asis'}
 pcbc=dudi.pco(bc_dist,scannf = F,nf=20)
 
 # Pourcentages associés aux axes
@@ -415,16 +430,10 @@ s.class(pcbc$li,mat$Traitement,col=c(1:2),sub="Bray curtis",xax=1, yax = 3)
 ```
 L'axe numéro 1 explique 21% de la variabilité et l'axe numéro deux 11%. L'axe numéro quant à lui explique 9% de la variabilité, il serait donc intérressant de le regrader également. 
 
-```{r}
-pcobc=pcoa(bc)
-biplot(pcobc, col=c("red"))
-```
-
-
 # Permanova : 
 
 Fonction adonis utilise la méthode de bray-curtis de base 
-```{r}
+```{r results='markup'}
 adonis2(bc ~ Traitement+Site, data=mat, permutations=999)
 ```
 Nous constatons que nous avons un effet significatif du traitement. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
@@ -465,7 +474,7 @@ is.euclid(bc_dist_o)#TRUE
 
 
 
-```{r}
+```{r fig.show='asis'}
 pcbc_ordre=dudi.pco(bc_dist_o,scannf = F,nf=20)
 
 # Pourcentages associés aux axes
@@ -483,9 +492,63 @@ L'axe numéro 1 explique 21% de la variabilité et l'axe numéro deux 11%. L'axe
 # Permanova : 
 
 Fonction adonis utilise la méthode de bray-curtis de base 
-```{r}
+```{r results='markup'}
 adonis2(bc_ordre ~ Traitement+Site, data=mat, permutations=999)
 ```
 Nous constatons que nous avons un effet significatif du traitement et du site quand nous utilisons les ordres plutôt que les classes. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
 
+
+
+# PcoA sur la bota 
+
+Je dédcide de grouper le tableau par numéro de barber. Car je dois avoir une matrice site/espèce. Or si je ne groupais pas par les sites, une ligne pouvais correspondre à différent site, ce que je ne voulais pas. Ainsi j'ai grouper cela. 
+```{r}
+data <- bota[,-c(1,2,3,5,6)]
+data1 <- aggregate(.~Numero_quadrat, data, sum)
+bota_pcoa <- data1[,-1]
+
+```
+
+Je fais ensuite ma pcoa avec une transformation de hellinger classique.
+```{r}
+
+bc_bota<-vegdist(bota_pcoa,method="hellinger")
+# Distance de Bray Curtis
+bc_dist_bota=sqrt(vegdist(bota_pcoa,"bray"))
+#comparaison des distance entre bray_curtis et la racine carr? de bray curtis
+plot(bc_bota,bc_dist_bota,xlim=c(0,1), ylim=c(0,1))
+abline(0,1)
+#Nous pouvons faire une PcoA au vue des données obtenu via le graphe
+
+is.euclid(bc_dist_bota)#TRUE
+```
+
+
+Je créé la matrice avec les infos qualitatives pour chaque site, afin de pouvoir plotter ça sur la pcoa en plus. 
+```{r}
+bota_bis <- bota %>% 
+  group_by(Numero_quadrat,Site, Parcelle) %>% 
+  summarise(n = n())
+
+bota_bis <- as.data.frame(bota_bis)
+bota_bis$Site <- as.factor(bota_bis$Site)
+bota_bis$Parcelle <- as.factor(bota_bis$Parcelle)
+```
+
+
+
+```{r}
+pcbc_bota=dudi.pco(bc_dist_bota,scannf = F,nf=20)
+
+# Pourcentages associés aux axes
+pourc=round((pcbc_bota$eig/sum(pcbc_bota$eig))*100,2)
+cumsum(pourc)
+pourc#deux premiers axes expliquent bcp : top. 
+
+s.label(pcbc_bota$li, sub="Hellinger")
+s.class(pcbc_bota$li,bota_bis$Parcelle,col=c(1:2),sub="Hellinger")
+s.class(pcbc_bota$li,bota_bis$Site,col=c(1:3),sub="Hellinger")
+s.class(pcbc_bota$li,bota_bis$Site,col=c(1:3),sub="Hellinger",xax=1, yax = 3)
+s.class(pcbc_bota$li,bota_bis$Parcelle,col=c(1:2),sub="Hellinger",xax=1, yax = 3)
+```
 
