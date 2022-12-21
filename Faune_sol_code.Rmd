@@ -33,6 +33,7 @@ library(MASS)
 library(ggsignif)
 library(iNEXT)
 library(cowplot)
+library(BiodiversityR)
 ```
 
 
@@ -498,6 +499,84 @@ adonis2(bc_ordre ~ Traitement+Site, data=mat, permutations=999)
 Nous constatons que nous avons un effet significatif du traitement et du site quand nous utilisons les ordres plutôt que les classes. La composition en classe entre les sites ligneux et non ligneux ne sont pas les mêmes. Nous expliquons 10% de variabilité avec ce facteur. 
 
 
+# Cap on soil fauna
+
+```{r}
+cap <- CAPdiscrim(matrice_ordre~Traitement, data=mat, dist="bray",axes=2,m=0)
+```
+On calcul bray curtis sur la matrice 'matrice_ordre' et ensuite nous appliquons le traitement pour faire l'analyse discriminante 
+
+axes = 2 : Nombres d'axes de la PCoA sur lesquels on veut que la méthode se focuse pour la suite de l'analyse.
+
+m=0 : Nombres d'axes que l'on veut qu'il considère pour faire l'analyse discriminante. Donc m=0 si on souhaite que le nombres axes pour la cap soit le nombre d'axes optimale par rapport au pourcentage explicatif 
+
+
+```{r}
+s.class(cap$x,mat$Traitement,col=(1:2))
+cap$manova#Plus pertinent car tester. Ce n'est pas le même F que nous observons lors de la fonction cap$F
+```
+approx F : permet de savoir si nous avons un effet significatif de notre axe sur la discrimination des variables : Nous avons un effet significatif du traitement 
+
+
+Other representation:
+```{r}
+plot1 <- ordiplot(cap)
+
+sites.long1 <- sites.long(plot1, env.data=mat)
+
+axis.long1 <- axis.long(cap, choices=c(1, 2))
+
+
+BioR.theme <- theme(
+  panel.background = element_blank(),
+  panel.border = element_blank(),
+  panel.grid = element_blank(),
+  axis.line = element_line("gray25"),
+  text = element_text(size = 12),
+  axis.text = element_text(size = 10, colour = "gray25"),
+  axis.title = element_text(size = 14, colour = "gray25"),
+  legend.title = element_text(size = 14),
+  legend.text = element_text(size = 14),
+  legend.key = element_blank())
+
+plotgg1 <- ggplot() + 
+  geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +  
+  xlab(axis.long1[1, "label"]) +
+  ylab(axis.long1[2, "label"]) +  
+  scale_x_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
+  geom_mark_ellipse(data=sites.long1, 
+                    aes(x=axis1, y=axis2, colour=sites.long1$Traitement, 
+                        fill=after_scale(alpha(colour, 0.2))), 
+                    expand=0, size=0.2, show.legend=FALSE)+ 
+  geom_point(data=sites.long1, 
+             aes(x=axis1, y=axis2, colour=sites.long1$Traitement, shape=sites.long1$Traitement), 
+             size=5) +
+  labs(color = "Traitement", shape="Traitement")+
+  BioR.theme +
+  ggsci::scale_colour_npg() +
+  coord_fixed(ratio=1)
+```
+
+
+```{r}
+plotgg1
+```
+
+Pour connaitre la contribution des espèces qui contribuent le plus aux différences entre les modes de gestion
+```{r echo=TRUE,fig.show='show'}
+species_contribution<-add.spec.scores(cap,matrice_ordre)
+sp<-species_contribution$cproj
+s.arrow(sp)
+
+par(mfrow=c(1,2))
+s.class(cap$x,mat$Traitement,col=(1:4))
+s.arrow(sp)
+dev.off()
+```
+
+
 
 # PcoA sur la bota 
 
@@ -550,5 +629,64 @@ s.class(pcbc_bota$li,bota_bis$Parcelle,col=c(1:2),sub="Hellinger")
 s.class(pcbc_bota$li,bota_bis$Site,col=c(1:3),sub="Hellinger")
 s.class(pcbc_bota$li,bota_bis$Site,col=c(1:3),sub="Hellinger",xax=1, yax = 3)
 s.class(pcbc_bota$li,bota_bis$Parcelle,col=c(1:2),sub="Hellinger",xax=1, yax = 3)
+```
+
+
+
+# Analyse combiné faune du sol / végétation : 
+
+Je créé deux matrices avec la même dimension: 3 quadrats bota. Je vais donc faire la moyenne des trois barber par transect
+
+```{r}
+faune_sol$Barber_transect<-faune_sol$Numero_barber#Je duplique la colonne pour supprimer les trois derniers caractère
+
+faune_sol$Barber_transect<-as.character(faune_sol$Barber_transect)
+
+faune_sol$Barber_transect <- substr(faune_sol$Barber_transect, 1, nchar(faune_sol$Barber_transect)-3)#remove last character from each string in 'name' column
+
+length(unique(faune_sol$Barber_transect))#18 
+```
+
+J'ai donc créer une colonne correspond seulement à la ligne du transect. Je vais regrouper ces valeurs en fonction de cette colonne, ce que je ferai pour la bota afin d'avoir les mêmes dimensions et aussi les mêmes noms de sites
+```{r}
+faune_small <- faune_sol %>% 
+  dplyr::select(Barber_transect, Ordre, Abondance) %>% 
+  group_by(Barber_transect, Ordre) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Ordre, values_from = Ab,values_fill = 0)
+
+mat_small<-as.data.frame(faune_small)
+rownames(mat_small) <- mat_small$Barber_transect
+matrice_t<-t(mat_small)
+mat_faune_small<-mat_small[,-1]
+
+#J'enleve B.L car absence de bota la bas
+mat_faune_small <- mat_faune_small[-c(1:3),]
+```
+
+
+```{r}
+bota_small <- bota
+bota_small$Numero_quadrat <- substr(bota_small$Numero_quadrat , 1, nchar(bota_small$Numero_quadrat )-1)
+
+data_small <- bota_small[,-c(1,2,3,5,6)]
+mat_bota_small <- aggregate(.~Numero_quadrat, data_small, sum)
+
+rownames(mat_bota_small) <- mat_bota_small$Numero_quadrat
+mat_bota_small<-mat_bota_small[,-1]
+```
+
+
+test cca
+```{r}
+cca_test <- cca(mat_faune_small, mat_bota_small)
+plot(cca_test)
+```
+
+
+```{r}
+plot(cca_test, type="n")
+text(cca_test, dis="cn")
+text(cca_test, "species", col="blue", cex=0.8)
 ```
 
