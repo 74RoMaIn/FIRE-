@@ -34,6 +34,7 @@ library(ggsignif)
 library(iNEXT)
 library(cowplot)
 library(BiodiversityR)
+library(cocorresp)
 ```
 
 
@@ -686,7 +687,48 @@ plot(cca_test)
 
 ```{r}
 plot(cca_test, type="n")
-text(cca_test, dis="cn")
 text(cca_test, "species", col="blue", cex=0.8)
+text(cca_test, dis="cn",scaling="species")
+```
+
+```{r}
+plot(cca_test, scaling=2, display = c("sp","cn"))
+```
+
+
+
+# Symmetric Co-correspondence analysis (Coca)
+
+Co-Correspondence Analysis: a new ordination method to relate two community compositions.
+```{r}
+bp.sym_1 <- coca(mat_faune_small ~ ., data = mat_bota_small, method = "symmetric")
+
+```
+
+A screeplot provides a graphical summary of the dimensionality of the covariance between the two matrices.
+```{r}
+screeplot(bp.sym)
+```
+From the screeplot, we see that most of the signal in the covariance is contained on the first 2–3 axes.
+
+
+We can refit the model retaining only the useful components, in part to see how much variation in the two species data sets is explained by the useful Co-CA axes:
+```{r}
+bp.sym <- coca(mat_faune_small ~ ., data = mat_bota_small, method = "symmetric", n.axes = 3)
+summary(bp.sym)
+```
+
+
+**How much variation the beetle and plant data sets repectively is explained by the 3 axes?**
+
+The resulting symmetric co-correspondence analysis can be plotted in the form of a biplot, except now we have two sets of species (variable) scores and two sets of site (observations or sample) scores. The biplot method can be used to draw Co-CA biplots. The which argument selects which of the two assemblages are drawn:
+
+*   "y1" indicates the species assemblage on the left-hand side of the formula,
+*   "y2" indicates the species assemblage on the right-hand side of the formula.
+```{r}
+layout(matrix(1:2, ncol = 2))
+biplot(bp.sym, which = "y1", main = "Faune du sol")
+biplot(bp.sym, which = "y2", main = "Bota")
+layout(1)
 ```
 
