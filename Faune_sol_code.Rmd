@@ -35,6 +35,8 @@ library(iNEXT)
 library(cowplot)
 library(BiodiversityR)
 library(cocorresp)
+library(ggpubr)
+library(ggforce)
 ```
 
 
@@ -116,14 +118,19 @@ La moyenne est passé de 6,5 à 5. Nous avons supprimé seulement 3 valeurs, mai
 
 ## Représentation graphique 
 ```{r mod_fig, fig.show='asis'}
-ggplot(faune_sol,aes(x=Traitement,y=log(Abondance+1),fill=Traitement))+
+poiss_plot <- ggplot(faune_sol,aes(x=Traitement,y=log(Abondance+1),fill=Traitement))+
   geom_boxplot()+
-  geom_signif(comparisons = list(c("Ligneux", "Non_ligneux")), 
-              map_signif_level=TRUE)+
   ylab('Abondance (log+1)')+
+  geom_signif(comparisons=list(c("Ligneux", "Non_ligneux")), annotations="*", y_position = 5, tip_length = 0, vjust=0)+
+  scale_fill_manual(values=c("darkolivegreen4","darkgoldenrod1"))+
   theme_classic()+
   theme(legend.position = c(0.12, 0.85),
         legend.background = element_rect(fill = "white")) 
+
+
+png('poisson.png')
+poiss_plot
+dev.off()
 ```
 
 ## Création du modèle 
@@ -294,8 +301,7 @@ mat$alpha <- diversity(matrice, index = 'shannon')
 
 
 ```{r shannon, fig.show='asis'}
-
-ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
+ggplot(mat,aes(y=alpha,x=Site,fill=Site))+
   geom_boxplot()+
   ylab('Shannon index')+
   theme_classic()+
@@ -305,12 +311,30 @@ ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
 ```
 
 
+```{r}
+ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
+  geom_boxplot()+
+  ylab('Shannon index')+
+  theme_classic()+
+   scale_fill_manual(values=c("darkolivegreen4","darkgoldenrod1"))+
+  theme(legend.position = c(0.12, 0.15),
+        legend.background = element_rect(fill = "white"))
+```
+
+
+
 ```{r results='markup'}
 shanon <- lm(alpha ~ Traitement + Site, data=mat)
 summary(shanon)
+
+shanon1 <- lm(alpha ~ Site + Traitement, data=mat)
+summary(shanon1)
+
+shanon2 <- aov(alpha ~ Site , data=mat)
+plot(TukeyHSD(shanon2))
 ```
 Pas de différence significative entre la différence de diversité alpha entre les deux traitements.
-La diversité est significativement différente entre le site de la triballe et des deux autres sites. L'indice de shannon est significativement plus faible à la triballe qu'à morties et buzarens. 
+L'indice de shannon est significativement plus faible à la triballe qu'à morties. 
 
 
 # Courbe de rarefaction :
@@ -328,14 +352,24 @@ mat_ligneux<-as.data.frame(mat_ligneux)
 rownames(mat_ligneux) <- mat_ligneux$Numero_barber
 matrice_t<-t(mat_ligneux)
 mat_ligneux<-mat_ligneux[,-1]
+
+#je décide de le faire uniquement sur les acari, collembola, et insecte
+mat_ligneux <- mat_ligneux %>% 
+  dplyr::select(Acari,Collembola,Insecta)
 ```
 
 
 ```{r echo=TRUE, results='markup',fig.show='asis'}
 
-ligneux_rare <- iNEXT(mat_ligneux,datatype = "abundance")
+ligneux_rare <- iNEXT(mat_ligneux, q=c(0,1,2), datatype = "abundance")
+
 ChaoShannon(mat_ligneux)
-ggiNEXT(ligneux_rare, type=1, se=TRUE)
+
+ggiNEXT(ligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Assemblage")+
+  theme_bw()
+
+ggiNEXT(ligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Order.q")+
+  theme_bw()
 
 ```
 
@@ -522,9 +556,7 @@ approx F : permet de savoir si nous avons un effet significatif de notre axe sur
 Other representation:
 ```{r}
 plot1 <- ordiplot(cap)
-
 sites.long1 <- sites.long(plot1, env.data=mat)
-
 axis.long1 <- axis.long(cap, choices=c(1, 2))
 
 
@@ -536,33 +568,35 @@ BioR.theme <- theme(
   text = element_text(size = 12),
   axis.text = element_text(size = 10, colour = "gray25"),
   axis.title = element_text(size = 14, colour = "gray25"),
-  legend.title = element_text(size = 14),
-  legend.text = element_text(size = 14),
-  legend.key = element_blank())
+  legend.title = element_text(size = 10),
+  legend.text = element_text(size = 10),
+  legend.key = element_blank(), 
+  legend.position = c(0.87,0.14))
 
 plotgg1 <- ggplot() + 
   geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
   geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +  
   xlab(axis.long1[1, "label"]) +
-  ylab(axis.long1[2, "label"]) +  
+  ylab(axis.long1[2, "label"]) +
   scale_x_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
   scale_y_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
   geom_mark_ellipse(data=sites.long1, 
-                    aes(x=axis1, y=axis2, colour=sites.long1$Traitement, 
-                        fill=after_scale(alpha(colour, 0.2))), 
+                    aes(x=axis1, y=axis2, color=sites.long1$Traitement, 
+                        fill=after_scale(alpha(color, 0.2))), 
                     expand=0, size=0.2, show.legend=FALSE)+ 
   geom_point(data=sites.long1, 
-             aes(x=axis1, y=axis2, colour=sites.long1$Traitement, shape=sites.long1$Traitement), 
-             size=5) +
+             aes(x=axis1, y=axis2, color=sites.long1$Traitement,   shape=sites.long1$Traitement), size=5) +  
+  scale_color_manual(values=c("darkolivegreen4","darkgoldenrod1"))+
   labs(color = "Traitement", shape="Traitement")+
   BioR.theme +
-  ggsci::scale_colour_npg() +
   coord_fixed(ratio=1)
 ```
 
 
 ```{r}
+tiff("test.tiff")
 plotgg1
+dev.off()
 ```
 
 Pour connaitre la contribution des espèces qui contribuent le plus aux différences entre les modes de gestion
@@ -671,7 +705,7 @@ bota_small <- bota
 bota_small$Numero_quadrat <- substr(bota_small$Numero_quadrat , 1, nchar(bota_small$Numero_quadrat )-1)
 
 data_small <- bota_small[,-c(1,2,3,5,6)]
-mat_bota_small <- aggregate(.~Numero_quadrat, data_small, sum)
+mat_bota_small <- aggregate(.~Numero_quadrat, data = data_small, FUN = "sum")
 
 rownames(mat_bota_small) <- mat_bota_small$Numero_quadrat
 mat_bota_small<-mat_bota_small[,-1]
@@ -727,8 +761,29 @@ The resulting symmetric co-correspondence analysis can be plotted in the form of
 *   "y2" indicates the species assemblage on the right-hand side of the formula.
 ```{r}
 layout(matrix(1:2, ncol = 2))
-biplot(bp.sym, which = "y1", main = "Faune du sol")
-biplot(bp.sym, which = "y2", main = "Bota")
+
+plot(bp.sym, which = "response", 
+     type = "points",
+     main = "Faune du sol")
+
+biplot(bp.sym, which = "predictor", main = "Bota")
+
 layout(1)
+```
+
+
+```{r}
+axis <- axis.long(bp.sym, choices=c(1, 2))
+
+ ggplot() + 
+  geom_vline(xintercept = c(0), color = "grey70", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey70", linetype = 2) +  
+  xlab(axis[1, "label"]) +
+  ylab(axis[2, "label"]) + 
+  scale_x_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels=NULL, name=NULL)) +
+  geom_point(data=as.data.frame(bp.sym$X), 
+             aes(x=`COCA 1`, y=`COCA 2`), size=2)+
+  geom_point() 
 ```
 
