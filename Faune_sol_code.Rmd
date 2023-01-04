@@ -121,11 +121,15 @@ La moyenne est passé de 6,5 à 5. Nous avons supprimé seulement 3 valeurs, mai
 poiss_plot <- ggplot(faune_sol,aes(x=Traitement,y=log(Abondance+1),fill=Traitement))+
   geom_boxplot()+
   ylab('Abondance (log+1)')+
-  geom_signif(comparisons=list(c("Ligneux", "Non_ligneux")), annotations="*", y_position = 5, tip_length = 0, vjust=0)+
+  geom_signif(comparisons=list(c("Ligneux", "Non_ligneux")), annotations="*", y_position = 4.5, tip_length = 0, vjust=0,size=1, textsize = 5)+
   scale_fill_manual(values=c("darkolivegreen4","darkgoldenrod1"))+
   theme_classic()+
-  theme(legend.position = c(0.12, 0.85),
-        legend.background = element_rect(fill = "white")) 
+  theme(legend.position = c(0.14, 0.85),
+        legend.background = element_rect(fill = "white"),
+        axis.text=element_text(size=18),
+        axis.title = element_text(size = 20),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12)) 
 
 
 png('poisson.png')
@@ -296,6 +300,7 @@ mat<-mat[,-c(1,5)]
 
 ```{r echo=TRUE}
 mat$alpha <- diversity(matrice, index = 'shannon')
+mat$simp <- diversity(matrice, index = 'simpson')
 ```                  
                   
 
@@ -307,7 +312,11 @@ ggplot(mat,aes(y=alpha,x=Site,fill=Site))+
   theme_classic()+
   scale_fill_brewer(palette = "Set2")+
   theme(legend.position = c(0.12, 0.15),
-        legend.background = element_rect(fill = "white")) 
+        legend.background = element_rect(fill = "white"),
+         axis.text=element_text(size=18),
+        axis.title = element_text(size = 20),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12)) 
 ```
 
 
@@ -317,8 +326,12 @@ ggplot(mat,aes(y=alpha,x=Site,fill=Traitement))+
   ylab('Shannon index')+
   theme_classic()+
    scale_fill_manual(values=c("darkolivegreen4","darkgoldenrod1"))+
-  theme(legend.position = c(0.12, 0.15),
-        legend.background = element_rect(fill = "white"))
+  theme(legend.position = c(0.18, 0.15),
+        legend.background = element_rect(fill = "white"),
+         axis.text=element_text(size=18),
+        axis.title = element_text(size = 20),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
 ```
 
 
@@ -332,6 +345,9 @@ summary(shanon1)
 
 shanon2 <- aov(alpha ~ Site , data=mat)
 plot(TukeyHSD(shanon2))
+
+simpson <- lm(simp ~ Traitement + Site, data=mat)
+summary(simpson)
 ```
 Pas de différence significative entre la différence de diversité alpha entre les deux traitements.
 L'indice de shannon est significativement plus faible à la triballe qu'à morties. 
@@ -341,8 +357,8 @@ L'indice de shannon est significativement plus faible à la triballe qu'à morti
 
 Creation d'une matrice ligneux/non ligneux
 ```{r echo=TRUE}
-faune_lingeux<-filter(faune_sol,Traitement=="Ligneux")
-mat_ligneux <- faune_lingeux %>% 
+faune_ligneux<-filter(faune_sol,Traitement=="Ligneux")
+mat_ligneux <- faune_ligneux %>% 
   dplyr::select(Numero_barber, Classe, Abondance) %>% 
   group_by(Numero_barber, Classe) %>% 
   summarise(Ab = mean(Abondance)) %>% 
@@ -352,25 +368,71 @@ mat_ligneux<-as.data.frame(mat_ligneux)
 rownames(mat_ligneux) <- mat_ligneux$Numero_barber
 matrice_t<-t(mat_ligneux)
 mat_ligneux<-mat_ligneux[,-1]
+mat_ligneux <- round(mat_ligneux, digits = 0)
 
 #je décide de le faire uniquement sur les acari, collembola, et insecte
 mat_ligneux <- mat_ligneux %>% 
   dplyr::select(Acari,Collembola,Insecta)
+
+faune_nl <- filter(faune_sol,Traitement=="Non_ligneux")
+mat_non_ligneux <- faune_nl %>% 
+  dplyr::select(Numero_barber, Classe, Abondance) %>% 
+  group_by(Numero_barber, Classe) %>% 
+  summarise(Ab = mean(Abondance)) %>% 
+  pivot_wider(names_from = Classe, values_from = Ab,values_fill = 0)
+
+mat_non_ligneux<-as.data.frame(mat_non_ligneux)
+rownames(mat_non_ligneux) <- mat_non_ligneux$Numero_barber
+matrice_t<-t(mat_non_ligneux)
+mat_non_ligneux<-mat_non_ligneux[,-1]
+mat_non_ligneux <- round(mat_non_ligneux, digits = 0)
+
+#je décide de le faire uniquement sur les acari, collembola, et insecte
+mat_non_ligneux <- mat_non_ligneux %>% 
+  dplyr::select(Acari,Collembola,Insecta)
+```
+
+Je vais créer une liste pour que ça marche avec  iNExt
+```{r}
+
+#Ligneux
+Acari <- mat_ligneux$Acari
+Collembola <- mat_ligneux$Collembola
+Insecta <- mat_ligneux$Insecta
+
+liste_ligneux <- list(Acari, Collembola, Insecta)
+names(liste_ligneux) <- c("Acari", "Collembola", "Insecta")
+
+
+#Non ligneux 
+Acari_nl <- mat_non_ligneux$Acari
+Collembola_nl <- mat_non_ligneux$Collembola
+Insecta_nl <- mat_non_ligneux$Insecta
+
+
+liste_nonligneux <- list(Acari_nl, Collembola_nl, Insecta_nl)
+names(liste_nonligneux) <- c("Acari", "Collembola", "Insecta")
+
 ```
 
 
 ```{r echo=TRUE, results='markup',fig.show='asis'}
-
-ligneux_rare <- iNEXT(mat_ligneux, q=c(0,1,2), datatype = "abundance")
-
-ChaoShannon(mat_ligneux)
-
+#Ligneux 
+ligneux_rare <- iNEXT(liste_ligneux, q=c(0,1,2), datatype = "abundance")
 ggiNEXT(ligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Assemblage")+
+  ggtitle('Courbe de rarefaction pour les sites ligneux')+
   theme_bw()
-
 ggiNEXT(ligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Order.q")+
   theme_bw()
 
+
+#Non ligneux 
+nonligneux_rare <- iNEXT(liste_nonligneux, q=c(0,1,2), datatype = "abundance")
+ggiNEXT(nonligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Assemblage")+
+  ggtitle('Courbe de rarefaction pour les sites non ligneux')+
+  theme_bw()
+ggiNEXT(nonligneux_rare, type=1, se=TRUE, grey=FALSE, facet.var="Order.q")+
+  theme_bw()
 ```
 
 
